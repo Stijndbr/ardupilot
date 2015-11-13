@@ -31,7 +31,7 @@ const AP_Param::GroupInfo AP_GPS::var_info[] = {
     // @Description: GPS type
     // @Values: 0:None,1:AUTO,2:uBlox,3:MTK,4:MTK19,5:NMEA,6:SiRF,7:HIL,8:SwiftNav,9:PX4-UAVCAN,10:SBF,11:GSOF
     // @RebootRequired: True
-    AP_GROUPINFO("TYPE",    0, AP_GPS, _type[0], 1),
+    AP_GROUPINFO("TYPE",    0, AP_GPS, _type[0], 10),
 
     // @Param: TYPE2
     // @DisplayName: 2nd GPS type

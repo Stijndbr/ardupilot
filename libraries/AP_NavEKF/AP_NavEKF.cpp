@@ -470,6 +470,20 @@ NavEKF::NavEKF(const AP_AHRS *ahrs, AP_Baro &baro, const RangeFinder &rng) :
     AP_Param::setup_object_defaults(this, var_info);
 }
 
+void NavEKF::RTKKalmanParam(){ //added by SDB for RTK GPS
+if (_ahrs->get_gps().status() == AP_GPS::GPS_OK_FIX_3D_RTK)
+{_gpsHorizVelNoise = 0.05f;
+_gpsHorizPosNoise = 0.05f;
+_gpsVertVelNoise = 0.05f;
+_baroAltNoise = 0.1f;}
+else{
+_gpsHorizVelNoise = 0.5f;
+_gpsHorizPosNoise = 0.5f;
+_gpsVertVelNoise = 0.7f;
+_baroAltNoise = 2.0f;
+}
+}
+
 // Check basic filter health metrics and return a consolidated health status
 bool NavEKF::healthy(void) const
 {
@@ -1987,6 +2001,7 @@ void NavEKF::CovariancePrediction()
 // fuse selected position, velocity and height measurements
 void NavEKF::FuseVelPosNED()
 {
+    RTKKalmanParam();
     // start performance timer
     hal.util->perf_begin(_perf_FuseVelPosNED);
 
@@ -3252,6 +3267,21 @@ void NavEKF::FuseOptFlow()
         flowXfailed = true;
     }
 
+
+   //calculate mean for origin from first 10 updates after Arming with RTKGPS to compensate for errors (sdb)
+   if(vehicleArmed && update_counter <= 10 && (_ahrs->get_gps().status() == AP_GPS::GPS_OK_FIX_3D_RTK)){
+   for (uint8_t i = 0; i <=10;i++){
+   meanPositionOrigin[0] += gpsPosNE.x;
+   meanPositionOrigin[1] += gpsPosNE.y;
+   meanPositionOrigin[2] += hgtMea;
+   update_counter++;
+   if (update_counter == 10){
+   meanPositionOrigin[0] = (meanPositionOrigin[0])/10;
+   meanPositionOrigin[1] = (meanPositionOrigin[1])/10;
+   meanPositionOrigin[2] = (meanPositionOrigin[2])/10;}
+   }
+   }
+
     ForceSymmetry();
     ConstrainVariances();
 
@@ -4400,6 +4430,8 @@ void NavEKF::readGpsData()
 // check for new altitude measurement data and update stored measurement if available
 void NavEKF::readHgtData()
 {
+
+ if(_ahrs->get_gps().status() < AP_GPS::GPS_OK_FIX_3D_RTK){ //use barometer if we have no RTK GPS
     // check to see if baro measurement has changed so we know if a new measurement has arrived
     if (_baro.healthy() && _baro.get_last_update() != lastHgtMeasTime) {
         // Don't use Baro height if operating in optical flow mode as we use range finder instead
@@ -4428,7 +4460,7 @@ void NavEKF::readHgtData()
             }
         } else {
             // use baro measurement and correct for baro offset
-            hgtMea = _baro.get_altitude();
+            hgtMea = _baro.get_altitude() - errorBaroRTK;;
             // get states that were stored at the time closest to the measurement time, taking measurement delay into account
             RecallStates(statesAtHgtTime, (imuSampleTime_ms - msecHgtDelay));
         }
@@ -4453,8 +4485,35 @@ void NavEKF::readHgtData()
     } else {
         newDataHgt = false;
     }
-}
+ }
 
+else{
+   // check to see if gps measurement has changed so we know if a new measurement has arrived
+    if (_ahrs->get_gps().last_message_time_ms() != lastHgtMeasTime) {
+        // time stamp used to check for new measurement
+        lastHgtMeasTime = _ahrs->get_gps().last_message_time_ms();;
+
+   // get measurement and set flag to let other functions know new data has arrived
+        if (validOrigin_z) {
+            if (update_counter == 10){    
+            RTK_origin_z = RTK_origin_z - meanPositionOrigin.z;}
+            hgtMea = (_ahrs->get_gps().location().alt - RTK_origin_z)*0.01f;
+        } else {
+            setOriginZ();
+            hgtMea = 0;
+        }
+        newDataHgt = true;
+       //memory value to correct barometer
+        errorBaroRTK = _baro.get_altitude() - hgtMea;
+
+        // get states that wer stored at the time closest to the measurement time, taking measurement delay into account
+        RecallStates(statesAtHgtTime, (imuSampleTime_ms - msecHgtDelay));
+    }
+    else {
+        newDataHgt = false;
+        }
+}
+}
 // check for new magnetometer data and update store measurements if available
 void NavEKF::readMagData()
 {
@@ -5215,6 +5274,12 @@ void NavEKF::setOrigin()
 {
     EKF_origin = _ahrs->get_gps().location();
     validOrigin = true;
+}
+
+void NavEKF:: setOriginZ()
+{
+  RTK_origin_z = _ahrs->get_gps().location().alt;
+  validOrigin_z = true;
 }
 
 // return the LLH location of the filters NED origin

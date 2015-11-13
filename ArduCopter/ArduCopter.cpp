@@ -543,6 +543,14 @@ void Copter::update_GPS(void)
     if (gps_updated) {
         // set system time if necessary
         set_system_time_from_GPS();
+        //Added by sdb to rewrite PID parameters when switch from RTK-> GPS & Baro
+        if (gps.status() < AP_GPS::GPS_OK_FIX_3D){
+        g.p_alt_hold.kP(1.0f);
+        g.p_pos_xy.kP(1.0f);}
+ 
+        if (gps.status() == AP_GPS::GPS_OK_FIX_3D_RTK){
+        g.p_alt_hold.kP(1.4f);
+        g.p_pos_xy.kP(2.6f);}
 
         // checks to initialise home and take location based pictures
         if (gps.status() >= AP_GPS::GPS_OK_FIX_3D) {

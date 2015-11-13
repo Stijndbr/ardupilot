@@ -497,6 +497,9 @@ private:
     // calculate the derivative of the down position using a complementary filter applied to vertical acceleration and EKF height
     void calcPosDownDerivative();
 
+    void RTKKalmanParam(); // parameters for RTK GPS Septentrio
+    void setOriginZ(); //only used when armed -> sdb 
+
     // EKF Mavlink Tuneable Parameters
     AP_Int8  _enable;               // zero to disable EKF1
     AP_Float _gpsHorizVelNoise;     // GPS horizontal velocity measurement noise : m/s
@@ -700,6 +703,11 @@ private:
     bool prevVehicleArmed;          // vehicleArmed from previous frame
     struct Location EKF_origin;     // LLH origin of the NED axis system - do not change unless filter is reset
     bool validOrigin;               // true when the EKF origin is valid
+    ftype RTK_origin_z;             // origin for downposition (sdb)
+    ftype errorBaroRTK;             // difference between baro and RTK (alt_offset)
+    bool validOrigin_z;
+    uint8_t update_counter;         // counts the number of updates when the vehicle is armed and in RTKmode (sdb)
+    Vector3f meanPositionOrigin;     // mean NED position origin to correct the origin
     float gpsSpdAccuracy;           // estimated speed accuracy in m/s returned by the UBlox GPS receiver
     uint32_t lastGpsVelFail_ms;     // time of last GPS vertical velocity consistency check fail
     Vector3f lastMagOffsets;        // magnetometer offsets returned by compass object from previous update
