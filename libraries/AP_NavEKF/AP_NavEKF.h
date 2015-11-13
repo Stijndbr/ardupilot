@@ -46,55 +46,20 @@
 #define MASK_GPS_HORIZ_SPD  (1<<7)
 
 class AP_AHRS;
+class NavEKF_core;
 
 class NavEKF
 {
+    friend class NavEKF_core;
+    
 public:
-    typedef float ftype;
-#if defined(MATH_CHECK_INDEXES) && (MATH_CHECK_INDEXES == 1)
-    typedef VectorN<ftype,2> Vector2;
-    typedef VectorN<ftype,3> Vector3;
-    typedef VectorN<ftype,4> Vector4;
-    typedef VectorN<ftype,5> Vector5;
-    typedef VectorN<ftype,6> Vector6;
-    typedef VectorN<ftype,8> Vector8;
-    typedef VectorN<ftype,9> Vector9;
-    typedef VectorN<ftype,10> Vector10;
-    typedef VectorN<ftype,11> Vector11;
-    typedef VectorN<ftype,13> Vector13;
-    typedef VectorN<ftype,14> Vector14;
-    typedef VectorN<ftype,15> Vector15;
-    typedef VectorN<ftype,22> Vector22;
-    typedef VectorN<ftype,31> Vector31;
-    typedef VectorN<ftype,34> Vector34;
-    typedef VectorN<VectorN<ftype,3>,3> Matrix3;
-    typedef VectorN<VectorN<ftype,22>,22> Matrix22;
-    typedef VectorN<VectorN<ftype,34>,22> Matrix34_50;
-    typedef VectorN<uint32_t,50> Vector_u32_50;
-#else
-    typedef ftype Vector2[2];
-    typedef ftype Vector3[3];
-    typedef ftype Vector4[4];
-    typedef ftype Vector5[5];
-    typedef ftype Vector6[6];
-    typedef ftype Vector8[8];
-    typedef ftype Vector9[9];
-    typedef ftype Vector10[10];
-    typedef ftype Vector11[11];
-    typedef ftype Vector13[13];
-    typedef ftype Vector14[14];
-    typedef ftype Vector15[15];
-    typedef ftype Vector22[22];
-    typedef ftype Vector31[31];
-    typedef ftype Vector34[34];
-    typedef ftype Matrix3[3][3];
-    typedef ftype Matrix22[22][22];
-    typedef ftype Matrix34_50[34][50];
-    typedef uint32_t Vector_u32_50[50];
-#endif
-
     // Constructor
     NavEKF(const AP_AHRS *ahrs, AP_Baro &baro, const RangeFinder &rng);
+
+    // allow logging to determine if the EKF is enabled
+    bool enabled(void) const {
+        return (_enable != 0);
+    }
 
     // This function is used to initialise the filter whilst moving, using the AHRS DCM solution
     // It should NOT be used to re-initialise after a timeout as DCM will also be corrupted
@@ -297,205 +262,7 @@ private:
     const AP_AHRS *_ahrs;
     AP_Baro &_baro;
     const RangeFinder &_rng;
-
-    // the states are available in two forms, either as a Vector34, or
-    // broken down as individual elements. Both are equivalent (same
-    // memory)
-    Vector34 states;
-    struct state_elements {
-        Quaternion  quat;           // 0..3
-        Vector3f    velocity;       // 4..6
-        Vector3f    position;       // 7..9
-        Vector3f    gyro_bias;      // 10..12
-        float       accel_zbias1;   // 13
-        Vector2f    wind_vel;       // 14..15
-        Vector3f    earth_magfield; // 16..18
-        Vector3f    body_magfield;  // 19..21
-        float       accel_zbias2;   // 22
-        Vector3f    vel1;           // 23 .. 25
-        float       posD1;          // 26
-        Vector3f    vel2;           // 27 .. 29
-        float       posD2;          // 30
-        Vector3f    omega;          // 31 .. 33
-    } &state;
-
-    // update the quaternion, velocity and position states using IMU measurements
-    void UpdateStrapdownEquationsNED();
-
-    // calculate the predicted state covariance matrix
-    void CovariancePrediction();
-
-    // force symmetry on the state covariance matrix
-    void ForceSymmetry();
-
-    // copy covariances across from covariance prediction calculation and fix numerical errors
-    void CopyAndFixCovariances();
-
-    // constrain variances (diagonal terms) in the state covariance matrix
-    void ConstrainVariances();
-
-    // constrain states
-    void ConstrainStates();
-
-    // fuse selected position, velocity and height measurements
-    void FuseVelPosNED();
-
-    // fuse magnetometer measurements
-    void FuseMagnetometer();
-
-    // fuse true airspeed measurements
-    void FuseAirspeed();
-
-    // fuse sythetic sideslip measurement of zero
-    void FuseSideslip();
-
-    // zero specified range of rows in the state covariance matrix
-    void zeroRows(Matrix22 &covMat, uint8_t first, uint8_t last);
-
-    // zero specified range of columns in the state covariance matrix
-    void zeroCols(Matrix22 &covMat, uint8_t first, uint8_t last);
-
-    // store states along with system time stamp in msces
-    void StoreStates(void);
-
-    // Reset the stored state history and store the current state
-    void StoreStatesReset(void);
-
-    // recall state vector stored at closest time to the one specified by msec
-    void RecallStates(state_elements &statesForFusion, uint32_t msec);
-
-    // calculate nav to body quaternions from body to nav rotation matrix
-    void quat2Tbn(Matrix3f &Tbn, const Quaternion &quat) const;
-
-    // calculate the NED earth spin vector in rad/sec
-    void calcEarthRateNED(Vector3f &omega, int32_t latitude) const;
-
-    // calculate whether the flight vehicle is on the ground or flying from height, airspeed and GPS speed
-    void SetFlightAndFusionModes();
-
-    // initialise the covariance matrix
-    void CovarianceInit();
-
-    // helper functions for readIMUData
-    bool readDeltaVelocity(uint8_t ins_index, Vector3f &dVel, float &dVel_dt);
-    bool readDeltaAngle(uint8_t ins_index, Vector3f &dAng);
-
-    // update IMU delta angle and delta velocity measurements
-    void readIMUData();
-
-    // check for new valid GPS data and update stored measurement if available
-    void readGpsData();
-
-    // check for new altitude measurement data and update stored measurement if available
-    void readHgtData();
-
-    // check for new magnetometer data and update store measurements if available
-    void readMagData();
-
-    // check for new airspeed data and update stored measurements if available
-    void readAirSpdData();
-
-    // determine when to perform fusion of GPS position and  velocity measurements
-    void SelectVelPosFusion();
-
-    // determine when to perform fusion of true airspeed measurements
-    void SelectTasFusion();
-
-    // determine when to perform fusion of synthetic sideslp measurements
-    void SelectBetaFusion();
-
-    // determine when to perform fusion of magnetometer measurements
-    void SelectMagFusion();
-
-    // force alignment of the yaw angle using GPS velocity data
-    void alignYawGPS();
-
-    // Forced alignment of the wind velocity states so that they are set to the reciprocal of
-    // the ground speed and scaled to 6 m/s. This is used when launching a fly-forward vehicle without an airspeed sensor
-    // on the assumption that launch will be into wind and 6 is representative global average at height
-    // http://maps.google.com/gallery/details?id=zJuaSgXp_WLc.kTBytKPmNODY&hl=en
-    void setWindVelStates();
-
-    // initialise the earth magnetic field states using declination and current attitude and magnetometer meaasurements
-    // and return attitude quaternion
-    Quaternion calcQuatAndFieldStates(float roll, float pitch);
-
-    // zero stored variables
-    void InitialiseVariables();
-
-    // reset the horizontal position states uing the last GPS measurement
-    void ResetPosition(void);
-
-    // reset velocity states using the last GPS measurement
-    void ResetVelocity(void);
-
-    // reset the vertical position state using the last height measurement
-    void ResetHeight(void);
-
-    // return true if we should use the airspeed sensor
-    bool useAirspeed(void) const;
-
-    // return true if the vehicle code has requested the filter to be ready for flight
-    bool getVehicleArmStatus(void) const;
-
-    // Check for filter divergence
-    void checkDivergence(void);
-
-    // Calculate weighting that is applied to IMU1 accel data to blend data from IMU's 1 and 2
-    void calcIMU_Weighting(float K1, float K2);
-
-    // return true if optical flow data is available
-    bool optFlowDataPresent(void) const;
-
-    // return true if we should use the range finder sensor
-    bool useRngFinder(void) const;
-
-    // determine when to perform fusion of optical flow measurements
-    void SelectFlowFusion();
-
-    // recall omega (angular rate vector) average from time specified by msec to current time
-    // this is useful for motion compensation of optical flow measurements
-    void RecallOmega(Vector3f &omegaAvg, uint32_t msecStart, uint32_t msecEnd);
-
-    // Estimate terrain offset using a single state EKF
-    void EstimateTerrainOffset();
-
-    // fuse optical flow measurements into the main filter
-    void FuseOptFlow();
-
-    // Check arm status and perform required checks and mode changes
-    void performArmingChecks();
-
-    // Set the NED origin to be used until the next filter reset
-    void setOrigin();
-
-    // determine if a takeoff is expected so that we can compensate for expected barometer errors due to ground effect
-    bool getTakeoffExpected();
-
-    // determine if a touchdown is expected so that we can compensate for expected barometer errors due to ground effect
-    bool getTouchdownExpected();
-
-    // Assess GPS data quality and return true if good enough to align the EKF
-    bool calcGpsGoodToAlign(void);
-
-    // Read the range finder and take new measurements if available
-    // Apply a median filter to range finder data
-    void readRangeFinder();
-
-    // check if the vehicle has taken off during optical flow navigation by looking at inertial and range finder data
-    void detectOptFlowTakeoff(void);
-
-    // align the NE earth magnetic field states with the published declination
-    void alignMagStateDeclination();
-
-    // Check for signs of bad gyro health before flight
-    bool checkGyroHealthPreFlight(void) const;
-
-    // update inflight calculaton that determines if GPS data is good enough for reliable navigation
-    void calcGpsGoodForFlight(void);
-
-    // calculate the derivative of the down position using a complementary filter applied to vertical acceleration and EKF height
-    void calcPosDownDerivative();
+    NavEKF_core *core;
 
     void RTKKalmanParam(); // parameters for RTK GPS Septentrio
     void setOriginZ(); //only used when armed -> sdb 
@@ -537,6 +304,7 @@ private:
     AP_Int8 _altSource;             // Primary alt source during optical flow navigation. 0 = use Baro, 1 = use range finder.
     AP_Int8 _gpsCheck;              // Bitmask controlling which preflight GPS checks are bypassed
 
+<<<<<<< HEAD
     // Tuning parameters
     const float gpsNEVelVarAccScale;    // Scale factor applied to NE velocity measurement variance due to manoeuvre acceleration
     const float gpsDVelVarAccScale;     // Scale factor applied to vertical velocity measurement variance due to manoeuvre acceleration
@@ -912,6 +680,8 @@ private:
 
     // vehicle specific initial gyro bias uncertainty
     float InitialGyroBiasUncertainty(void) const;
+=======
+>>>>>>> upstream/master
 };
 
 #endif // AP_NavEKF

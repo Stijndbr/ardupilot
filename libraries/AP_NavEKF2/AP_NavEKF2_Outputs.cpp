@@ -31,14 +31,37 @@ bool NavEKF2_core::healthy(void) const
     if ((imuSampleTime_ms - ekfStartTime_ms) < 1000 ) {
         return false;
     }
-    // barometer and position innovations must be within limits when on-ground
+    // position and height innovations must be within limits when on-ground and in a static mode of operation
     float horizErrSq = sq(innovVelPos[3]) + sq(innovVelPos[4]);
-    if (onGround && (fabsf(innovVelPos[5]) > 1.0f || horizErrSq > 1.0f)) {
+    if (onGround && (PV_AidingMode == AID_NONE) && ((horizErrSq > 1.0f) || (fabsf(hgtInnovFiltState) > 1.0f))) {
         return false;
     }
 
     // all OK
     return true;
+}
+
+// Return a consolidated fault score where higher numbers are less healthy
+// Intended to be used by the front-end to determine which is the primary EKF
+float NavEKF2_core::faultScore(void) const
+{
+    float score = 0.0f;
+    // If velocity, position or height measurements are failing consistency checks, this adds to the score
+    if (velTestRatio > 1.0f) {
+        score += velTestRatio-1.0f;
+    }
+    if (posTestRatio > 1.0f) {
+        score += posTestRatio-1.0f;
+    }
+    if (hgtTestRatio > 1.0f) {
+        score += hgtTestRatio-1.0f;
+    }
+    // If the tilt error is excessive this adds to the score
+    const float tiltErrThreshold = 0.1f;
+    if (tiltAlignComplete && yawAlignComplete && tiltErrFilt > tiltErrThreshold) {
+        score += tiltErrFilt / tiltErrThreshold;
+    }
+    return score;
 }
 
 // return data for debugging optical flow fusion
@@ -61,9 +84,9 @@ void NavEKF2_core::getFlowDebug(float &varFlow, float &gndOffset, float &flowInn
 bool NavEKF2_core::getHeightControlLimit(float &height) const
 {
     // only ask for limiting if we are doing optical flow navigation
-    if (frontend._fusionModeGPS == 3) {
+    if (frontend->_fusionModeGPS == 3) {
         // If are doing optical flow nav, ensure the height above ground is within range finder limits after accounting for vehicle tilt and control errors
-        height = max(float(_rng.max_distance_cm()) * 0.007f - 1.0f, 1.0f);
+        height = max(float(frontend->_rng.max_distance_cm()) * 0.007f - 1.0f, 1.0f);
         return true;
     } else {
         return false;
@@ -81,11 +104,11 @@ void NavEKF2_core::getEulerAngles(Vector3f &euler) const
 // return body axis gyro bias estimates in rad/sec
 void NavEKF2_core::getGyroBias(Vector3f &gyroBias) const
 {
-    if (dtIMUavg < 1e-6f) {
+    if (dtEkfAvg < 1e-6f) {
         gyroBias.zero();
         return;
     }
-    gyroBias = stateStruct.gyro_bias / dtIMUavg;
+    gyroBias = stateStruct.gyro_bias / dtEkfAvg;
 }
 
 // return body axis gyro scale factor error as a percentage
@@ -175,8 +198,8 @@ void NavEKF2_core::getAccelNED(Vector3f &accelNED) const {
 
 // return the Z-accel bias estimate in m/s^2
 void NavEKF2_core::getAccelZBias(float &zbias) const {
-    if (dtIMUavg > 0) {
-        zbias = stateStruct.accel_zbias / dtIMUavg;
+    if (dtEkfAvg > 0) {
+        zbias = stateStruct.accel_zbias / dtEkfAvg;
     } else {
         zbias = 0;
     }
@@ -287,7 +310,7 @@ void NavEKF2_core::getEkfControlLimits(float &ekfGndSpdLimit, float &ekfNavVelGa
 {
     if (PV_AidingMode == AID_RELATIVE) {
         // allow 1.0 rad/sec margin for angular motion
-        ekfGndSpdLimit = max((frontend._maxFlowRate - 1.0f), 0.0f) * max((terrainState - stateStruct.position[2]), rngOnGnd);
+        ekfGndSpdLimit = max((frontend->_maxFlowRate - 1.0f), 0.0f) * max((terrainState - stateStruct.position[2]), rngOnGnd);
         // use standard gains up to 5.0 metres height and reduce above that
         ekfNavVelGainScaler = 4.0f / max((terrainState - stateStruct.position[2]),4.0f);
     } else {
@@ -318,6 +341,11 @@ void NavEKF2_core::getMagXYZ(Vector3f &magXYZ) const
     magXYZ = stateStruct.body_magfield*1000.0f;
 }
 
+// return the index for the active magnetometer
+uint8_t NavEKF2_core::getActiveMag() const
+{
+    return (uint8_t)magSelectIndex;
+}
 
 // return the innovations for the NED Pos, NED Vel, XYZ Mag and Vtas measurements
 void  NavEKF2_core::getInnovations(Vector3f &velInnov, Vector3f &posInnov, Vector3f &magInnov, float &tasInnov, float &yawInnov) const
@@ -412,7 +440,7 @@ void  NavEKF2_core::getFilterStatus(nav_filter_status &status) const
     bool doingNormalGpsNav = !posTimeout && (PV_AidingMode == AID_ABSOLUTE);
     bool someVertRefData = (!velTimeout && useGpsVertVel) || !hgtTimeout;
     bool someHorizRefData = !(velTimeout && posTimeout && tasTimeout) || doingFlowNav;
-    bool optFlowNavPossible = flowDataValid && (frontend._fusionModeGPS == 3);
+    bool optFlowNavPossible = flowDataValid && (frontend->_fusionModeGPS == 3);
     bool gpsNavPossible = !gpsNotAvailable && (PV_AidingMode == AID_ABSOLUTE) && gpsGoodToAlign;
     bool filterHealthy = healthy() && tiltAlignComplete && yawAlignComplete;
 
@@ -515,5 +543,12 @@ const char *NavEKF2_core::prearm_failure_reason(void) const
     return prearm_fail_string;
 }
 
+
+// report the number of frames lapsed since the last state prediction
+// this is used by other instances to level load
+uint8_t NavEKF2_core::getFramesSincePredict(void) const
+{
+    return framesSincePredict;
+}
 
 #endif // HAL_CPU_CLASS

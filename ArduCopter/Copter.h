@@ -105,6 +105,9 @@
 #include <AC_PrecLand/AC_PrecLand.h>
 #include <AP_IRLock/AP_IRLock.h>
 #endif
+#include <AC_InputManager/AC_InputManager.h>        // Pilot input handling library
+#include <AC_InputManager/AC_InputManager_Heli.h>   // Heli specific pilot input handling library
+
 
 // AP_HAL to Arduino compatibility layer
 // Configuration
@@ -260,9 +263,9 @@ private:
 
     struct {
         bool running;
-        float speed;
+        float max_speed;
+        float alt_delta;
         uint32_t start_ms;
-        uint32_t time_ms;
     } takeoff_state;
 
     RCMapper rcmap;
@@ -504,6 +507,13 @@ private:
     // Precision Landing
 #if PRECISION_LANDING == ENABLED
     AC_PrecLand precland;
+#endif
+
+    // Pilot Input Management Library
+    // Only used for Helicopter for AC3.3, to be expanded to include Multirotor
+    // child class for AC3.4
+#if FRAME_CONFIG == HELI_FRAME
+    AC_InputManager_Heli input_manager;
 #endif
 
     // use this to prevent recursion during sensor init
@@ -818,7 +828,6 @@ private:
     bool mode_allows_arming(uint8_t mode, bool arming_from_gcs);
     void notify_flight_mode(uint8_t mode);
     void heli_init();
-    int16_t get_pilot_desired_collective(int16_t control_in);
     void check_dynamic_flight(void);
     void update_heli_control_dynamics(void);
     void heli_update_landing_swash();
@@ -933,7 +942,7 @@ private:
     void takeoff_get_climb_rates(float& pilot_climb_rate, float& takeoff_climb_rate);
     void print_hit_enter();
     void tuning();
-    void gcs_send_text_fmt(const char *fmt, ...);
+    void gcs_send_text_fmt(MAV_SEVERITY severity, const char *fmt, ...);
     bool start_command(const AP_Mission::Mission_Command& cmd);
     bool verify_command(const AP_Mission::Mission_Command& cmd);
     bool verify_command_callback(const AP_Mission::Mission_Command& cmd);

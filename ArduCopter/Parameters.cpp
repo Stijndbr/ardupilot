@@ -519,24 +519,6 @@ const AP_Param::Info Copter::var_info[] = {
     // @Group: H_RSC_
     // @Path: ../libraries/RC_Channel/RC_Channel.cpp
     GGROUP(heli_servo_rsc,    "H_RSC_", RC_Channel),
-
-    // @Param: H_STAB_COL_MIN
-    // @DisplayName: Heli Stabilize Throttle Collective Minimum
-    // @Description: Helicopter's minimum collective position while pilot directly controls collective in stabilize mode
-    // @Range: 0 500
-    // @Units: Percent*10
-    // @Increment: 1
-    // @User: Standard
-    GSCALAR(heli_stab_col_min, "H_STAB_COL_MIN", HELI_STAB_COLLECTIVE_MIN_DEFAULT),
-
-    // @Param: H_STAB_COL_MAX
-    // @DisplayName: Stabilize Throttle Maximum
-    // @Description: Helicopter's maximum collective position while pilot directly controls collective in stabilize mode
-    // @Range: 500 1000
-    // @Units: Percent*10
-    // @Increment: 1
-    // @User: Standard
-    GSCALAR(heli_stab_col_max, "H_STAB_COL_MAX", HELI_STAB_COLLECTIVE_MAX_DEFAULT),
 #endif
 
     // RC channel
@@ -900,6 +882,12 @@ const AP_Param::Info Copter::var_info[] = {
     // @Group: LGR_
     // @Path: ../libraries/AP_LandingGear/AP_LandingGear.cpp
     GOBJECT(landinggear,    "LGR_", AP_LandingGear),
+
+#if FRAME_CONFIG == HELI_FRAME
+    // @Group: IM_
+    // @Path: ../libraries/AC_InputManager/AC_InputManager_Heli.cpp
+    GOBJECT(input_manager, "IM_", AC_InputManager_Heli),
+#endif
 
     // @Group: COMPASS_
     // @Path: ../libraries/AP_Compass/Compass.cpp
